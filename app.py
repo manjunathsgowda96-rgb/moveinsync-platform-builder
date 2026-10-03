@@ -809,10 +809,14 @@ with st.expander("MVP scope & data gaps"):
         """
         **MVP scope:** Managed fleet only (`Site Type = O`).
 
-        **Not evaluated in this MVP because the supplied dataset does not
-        contain the required fields:** vehicle-document compliance,
-        live vehicle availability / offline status, and operator economics
-        such as earning, revenue or contract terms.
+        **The supplied dataset is historical and is used to demonstrate the
+        operating logic.** In production, the control tower would consume a
+        live trip/vehicle feed for real-time exception detection, plus separate
+        compliance and vehicle-availability data sources.
+
+        **Operator economics:** earning/revenue/contract fields currently have
+        a known data-quality defect, so no economics decision layer is built
+        until the underlying measurement is reliable.
 
         **Late Risk Score:** Historical heuristic using current start delay,
         prior cab-route performance, prior site-direction performance and
