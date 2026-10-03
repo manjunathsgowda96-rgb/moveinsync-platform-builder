@@ -692,18 +692,58 @@ else:
         )
 
         # --------------------------------------------------
-        # RISK FILTER
+        # EXCEPTION FILTERS
         # --------------------------------------------------
 
-        risk_filter = st.selectbox(
-            "Risk",
-            ["All", "High", "Medium", "Low"],
-            key="exception_risk_filter"
-        )
+        st.markdown("##### Filter exceptions")
+
+        filter_col1, filter_col2, filter_col3 = st.columns(3)
+
+        with filter_col1:
+            risk_filter = st.selectbox(
+                "Risk",
+                ["All", "High", "Medium", "Low"],
+                key="exception_risk_filter"
+            )
+
+        with filter_col2:
+            reason_options = [
+                "All",
+                "Started late",
+                "Cab frequently late on this route",
+                "Site / route has frequent delays",
+                "High-delay time period",
+                "Late trip"
+            ]
+
+            reason_filter = st.selectbox(
+                "Reason",
+                reason_options,
+                key="exception_reason_filter"
+            )
+
+        with filter_col3:
+            owner_filter = st.selectbox(
+                "Owner",
+                ["All"] + sorted(
+                    exceptions["Owner"].dropna().unique().tolist()
+                ),
+                key="exception_owner_filter"
+            )
 
         if risk_filter != "All":
             exceptions = exceptions[
                 exceptions["Risk"] == risk_filter
+            ]
+
+        if reason_filter != "All":
+            exceptions = exceptions[
+                exceptions["Reason"] == reason_filter
+            ]
+
+        if owner_filter != "All":
+            exceptions = exceptions[
+                exceptions["Owner"] == owner_filter
             ]
 
         st.caption(
