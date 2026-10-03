@@ -658,12 +658,57 @@ else:
         exceptions["Owner"] = "City Ops"
 
         # --------------------------------------------------
+        # ACTION
+        # --------------------------------------------------
+
+        def get_action(row):
+
+            if row["Positive Start Delay"] > 10:
+                return "Contact driver / dispatch"
+
+            if row["Cab Route Late Rate"] >= 0.5:
+                return "Investigate cab / vendor"
+
+            if row["Site Late Rate"] >= 0.5:
+                return "Review site-route issue"
+
+            if row["Time Bucket Late Rate"] >= 0.5:
+                return "Monitor upcoming trips"
+
+            return "Review trip"
+
+        exceptions["Action"] = exceptions.apply(
+            get_action,
+            axis=1
+        )
+
+        # --------------------------------------------------
         # SORT BY RISK
         # --------------------------------------------------
 
         exceptions = exceptions.sort_values(
             ["Late Risk Score", "Positive End Delay"],
             ascending=[False, False]
+        )
+
+        # --------------------------------------------------
+        # RISK FILTER
+        # --------------------------------------------------
+
+        risk_filter = st.selectbox(
+            "Risk",
+            ["All", "High", "Medium", "Low"],
+            key="exception_risk_filter"
+        )
+
+        if risk_filter != "All":
+            exceptions = exceptions[
+                exceptions["Risk"] == risk_filter
+            ]
+
+        st.caption(
+            "Prioritize High-risk trips first. Each exception includes an "
+            "owner and recommended next action."
         )
 
         # --------------------------------------------------
@@ -686,7 +731,8 @@ else:
                 "Late Risk Score",
                 "Risk",
                 "Reason",
-                "Owner"
+                "Owner",
+                "Action"
             ]
         ].copy()
 
@@ -712,6 +758,29 @@ else:
         )
 
 st.divider()
+
+# ==================================================
+# MVP SCOPE & DATA GAPS
+# ==================================================
+
+with st.expander("MVP scope & data gaps"):
+    st.markdown(
+        """
+        **MVP scope:** Managed fleet only (`Site Type = O`).
+
+        **Not evaluated in this MVP because the supplied dataset does not
+        contain the required fields:** vehicle-document compliance,
+        live vehicle availability / offline status, and operator economics
+        such as earning, revenue or contract terms.
+
+        **Late Risk Score:** Historical heuristic using current start delay,
+        prior cab-route performance, prior site-direction performance and
+        time-of-day performance. It is not a validated probability model.
+        """
+    )
+
+st.divider()
+
 
 # ==================================================
 # VENDOR SERVICE PERFORMANCE
