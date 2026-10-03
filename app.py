@@ -800,31 +800,7 @@ else:
 
 st.divider()
 
-# ==================================================
-# MVP SCOPE & DATA GAPS
-# ==================================================
 
-with st.expander("MVP scope & data gaps"):
-    st.markdown(
-        """
-        **MVP scope:** Managed fleet only (`Site Type = O`).
-
-        **The supplied dataset is historical and is used to demonstrate the
-        operating logic.** In production, the control tower would consume a
-        live trip/vehicle feed for real-time exception detection, plus separate
-        compliance and vehicle-availability data sources.
-
-        **Operator economics:** earning/revenue/contract fields currently have
-        a known data-quality defect, so no economics decision layer is built
-        until the underlying measurement is reliable.
-
-        **Late Risk Score:** Historical heuristic using current start delay,
-        prior cab-route performance, prior site-direction performance and
-        time-of-day performance. It is not a validated probability model.
-        """
-    )
-
-st.divider()
 
 
 # ==================================================
@@ -947,3 +923,30 @@ st.caption(
     "No-delay ride = both actual start and actual end are on/before plan. "
     "Status thresholds are MVP assumptions, not contractual SLAs."
 )
+
+st.divider()
+
+# ==================================================
+# MVP SCOPE & DATA GAPS
+# ==================================================
+
+with st.expander("MVP scope & data gaps"):
+    st.markdown(
+        """
+        **MVP scope:** Managed fleet only (`Site Type = O`).
+
+        **The supplied dataset is historical and is used to demonstrate the
+        operating logic.** In production, the control tower would consume a
+        live trip/vehicle feed for real-time exception detection, plus separate
+        compliance and vehicle-availability data sources.
+
+        **Operator economics:** earning/revenue/contract fields currently have
+        a known data-quality defect, so no economics decision layer is built
+        until the underlying measurement is reliable.
+
+        **Late Risk Score:** Historical heuristic using current start delay,
+        prior cab-route performance, prior site-direction performance and
+        time-of-day performance. It is not a validated probability model.
+        """
+    )
+
