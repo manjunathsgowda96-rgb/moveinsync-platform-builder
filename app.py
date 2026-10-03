@@ -453,195 +453,231 @@ st.divider()
 # EXCEPTION QUEUE + LATE RISK
 # ==================================================
 
-st.subheader("Exception queue")
+st.subheader("Exception Queue")
 
-exceptions = f[
-    (f["Start Breach"])
-    | (f["End Breach"])
-].copy()
+# Work only on rides that have some delay
+exceptions = d[d["Any Delay"]].copy()
 
-# Sort for historical calculations
-exceptions = exceptions.sort_values(
-    [
-        "Cab ID",
-        "Site",
-        "Direction",
-        "Base Date",
-        "Planned Start"
-    ]
-).copy()
+if len(exceptions) == 0:
+    st.success("No delayed rides in the selected period.")
+else:
 
-groups = [
-    "Cab ID",
-    "Site",
-    "Direction"
-]
+    # --------------------------------------------------
+    # TIME BUCKET
+    # --------------------------------------------------
+    def get_time_bucket(dt):
+        if pd.isna(dt):
+            return "Unknown"
 
-exceptions["Prior comparable count"] = (
-    exceptions.groupby(groups).cumcount()
-)
+        hour = dt.hour
 
-exceptions["Prior comparable late rate"] = (
-    exceptions.groupby(groups)["End Breach"]
-    .transform(
-        lambda s:
-        s.shift(1)
-        .rolling(10, min_periods=3)
-        .mean()
+        if 5 <= hour < 12:
+            return "Morning"
+        elif 12 <= hour < 17:
+            return "Afternoon"
+        elif 17 <= hour < 21:
+            return "Evening"
+        else:
+            return "Night"
+
+    exceptions["Time Bucket"] = (
+        exceptions["Planned Start"].apply(get_time_bucket)
     )
-)
 
-exceptions["Route late rate"] = (
-    exceptions.groupby(
-        ["Site", "Direction"]
-    )["End Breach"]
-    .transform("mean")
-)
+    # --------------------------------------------------
+    # HISTORICAL LATE PERFORMANCE
+    # --------------------------------------------------
 
-exceptions["Shift late rate"] = (
-    exceptions.groupby("Shift")["End Breach"]
-    .transform("mean")
-)
+    # Sort chronologically so historical performance
+    # only considers rides before the current ride
+    exceptions = exceptions.sort_values("Start Time").copy()
 
-# Risk score
-start_component = (
-    exceptions["Positive Start Delay"]
-    .clip(0, 30)
-    / 30
-    * 100
-)
+    # Previous 10 comparable rides for same Cab + Site + Direction
+    exceptions["Cab Route Late Rate"] = (
+        exceptions
+        .groupby(["Cab ID", "Site", "Direction"])["End Breach"]
+        .transform(
+            lambda x: x.shift(1).rolling(10, min_periods=3).mean()
+        )
+    )
 
-history_component = (
-    exceptions["Prior comparable late rate"]
-    .fillna(exceptions["Route late rate"])
-    .fillna(0)
-    * 100
-)
+    # Site + Direction historical late rate
+    exceptions["Site Late Rate"] = (
+        exceptions
+        .groupby(["Site", "Direction"])["End Breach"]
+        .transform(
+            lambda x: x.shift(1).rolling(10, min_periods=3).mean()
+        )
+    )
 
-route_component = (
-    exceptions["Route late rate"]
-    .fillna(0)
-    * 100
-)
+    # Time-of-day historical late rate
+    exceptions["Time Bucket Late Rate"] = (
+        exceptions
+        .groupby("Time Bucket")["End Breach"]
+        .transform(
+            lambda x: x.shift(1).rolling(20, min_periods=5).mean()
+        )
+    )
 
-shift_component = (
-    exceptions["Shift late rate"]
-    .fillna(0)
-    * 100
-)
+    # Fill missing history with 0
+    exceptions["Cab Route Late Rate"] = (
+        exceptions["Cab Route Late Rate"].fillna(0)
+    )
 
-exceptions["Late Risk Score"] = (
-    0.40 * start_component
-    + 0.30 * history_component
-    + 0.20 * route_component
-    + 0.10 * shift_component
-).clip(0, 100).round(0)
+    exceptions["Site Late Rate"] = (
+        exceptions["Site Late Rate"].fillna(0)
+    )
 
+    exceptions["Time Bucket Late Rate"] = (
+        exceptions["Time Bucket Late Rate"].fillna(0)
+    )
 
-def reason_owner(row):
+    # --------------------------------------------------
+    # CURRENT START DELAY COMPONENT
+    # --------------------------------------------------
 
-    if row["Positive End Delay"] > 30:
-        return "Severe trip delay", "City Ops 1"
+    # A cab that has already started late has a higher
+    # probability of finishing late.
+    exceptions["Start Delay Component"] = (
+        exceptions["Positive Start Delay"]
+        .clip(0, 30)
+        / 30
+        * 100
+    )
 
-    if row["Positive Start Delay"] > 10:
-        return "Late departure", "City Ops 2"
+    # --------------------------------------------------
+    # HISTORICAL CAB + ROUTE COMPONENT
+    # --------------------------------------------------
 
-    if (
-        pd.notna(row["Prior comparable late rate"])
-        and row["Prior comparable late rate"] >= 0.50
-    ):
-        return "Repeated cab/route risk", "City Ops 3"
+    exceptions["History Component"] = (
+        exceptions["Cab Route Late Rate"] * 100
+    )
 
-    return "Route/site pattern", "City Ops 4"
+    # --------------------------------------------------
+    # SITE / ROUTE COMPONENT
+    # --------------------------------------------------
 
+    exceptions["Route Component"] = (
+        exceptions["Site Late Rate"] * 100
+    )
 
-reason_owner_values = exceptions.apply(
-    reason_owner,
-    axis=1,
-    result_type="expand"
-)
+    # --------------------------------------------------
+    # TIME-OF-DAY COMPONENT
+    # --------------------------------------------------
 
-exceptions["Reason"] = reason_owner_values[0]
-exceptions["Owner"] = reason_owner_values[1]
+    exceptions["Time Component"] = (
+        exceptions["Time Bucket Late Rate"] * 100
+    )
 
-exceptions["Risk"] = pd.cut(
-    exceptions["Late Risk Score"],
-    bins=[-1, 39, 69, 100],
-    labels=["Low", "Medium", "High"]
-)
+    # --------------------------------------------------
+    # FINAL LATE RISK SCORE
+    # --------------------------------------------------
 
-exceptions = exceptions.sort_values(
-    [
-        "Late Risk Score",
-        "Positive End Delay"
-    ],
-    ascending=[False, False]
-)
+    exceptions["Late Risk Score"] = (
+        0.40 * exceptions["Start Delay Component"]
+        + 0.30 * exceptions["History Component"]
+        + 0.20 * exceptions["Route Component"]
+        + 0.10 * exceptions["Time Component"]
+    ).clip(0, 100).round(0)
 
-q1, q2, q3, q4 = st.columns(4)
+    # --------------------------------------------------
+    # RISK LEVEL
+    # --------------------------------------------------
 
-q1.metric(
-    "Start breaches",
-    f"{int(f['Start Breach'].sum()):,}"
-)
+    exceptions["Risk"] = np.select(
+        [
+            exceptions["Late Risk Score"] >= 70,
+            exceptions["Late Risk Score"] >= 40
+        ],
+        [
+            "High",
+            "Medium"
+        ],
+        default="Low"
+    )
 
-q2.metric(
-    "End breaches",
-    f"{int(f['End Breach'].sum()):,}"
-)
+    # --------------------------------------------------
+    # REASON FOR EXCEPTION
+    # --------------------------------------------------
 
-q3.metric(
-    "Any breach",
-    f"{len(exceptions):,}"
-)
+    def get_reason(row):
 
-q4.metric(
-    "High-risk exceptions",
-    f"{int((exceptions['Risk'] == 'High').sum()):,}"
-)
+        if row["Positive Start Delay"] > 10:
+            return "Started late"
 
-qcols = [
-    "Risk",
-    "Late Risk Score",
-    "Reason",
-    "Owner",
-    "Cab ID",
-    "Site",
-    "Vendor",
-    "Direction",
-    "Planned Start",
-    "Start Time",
-    "Start Delay Min",
-    "Planned End",
-    "End Time",
-    "End Delay Min"
-]
+        if row["Cab Route Late Rate"] >= 0.5:
+            return "Cab frequently late on this route"
 
-show = exceptions[
-    [c for c in qcols if c in exceptions.columns]
-].head(150).copy()
+        if row["Site Late Rate"] >= 0.5:
+            return "Site / route has frequent delays"
 
-for c in [
-    "Start Delay Min",
-    "End Delay Min"
-]:
-    show[c] = show[c].round(1)
+        if row["Time Bucket Late Rate"] >= 0.5:
+            return "High-delay time period"
 
-st.dataframe(
-    show,
-    use_container_width=True,
-    hide_index=True
-)
+        return "Late trip"
 
-st.caption(
-    "Late Risk Score is an MVP historical proxy using recorded start delay, "
-    "recent comparable cab/route history, route/site history and shift pattern. "
-    "It is not a validated live probability; a live version would require "
-    "current trip/ETA/GPS data."
-)
+    exceptions["Reason"] = exceptions.apply(
+        get_reason,
+        axis=1
+    )
 
-st.divider()
+    # --------------------------------------------------
+    # OWNER
+    # --------------------------------------------------
 
+    # For the current MVP, all lateness exceptions are
+    # owned by City Operations.
+    exceptions["Owner"] = "City Ops"
+
+    # --------------------------------------------------
+    # SORT BY RISK
+    # --------------------------------------------------
+
+    exceptions = exceptions.sort_values(
+        ["Late Risk Score", "Positive End Delay"],
+        ascending=[False, False]
+    )
+
+    # --------------------------------------------------
+    # DISPLAY TABLE
+    # --------------------------------------------------
+
+    exception_display = exceptions[
+        [
+            "Site",
+            "Cab ID",
+            "Vendor",
+            "Duty Num",
+            "Direction",
+            "Start Time",
+            "Planned Start",
+            "End Time",
+            "Planned End",
+            "Positive Start Delay",
+            "Positive End Delay",
+            "Late Risk Score",
+            "Risk",
+            "Reason",
+            "Owner"
+        ]
+    ].copy()
+
+    # Rename columns for dashboard
+    exception_display = exception_display.rename(
+        columns={
+            "Cab ID": "Cab",
+            "Duty Num": "Duty",
+            "Positive Start Delay": "Start Delay (min)",
+            "Positive End Delay": "End Delay (min)",
+            "Late Risk Score": "Risk Score"
+        }
+    )
+
+    st.dataframe(
+        exception_display,
+        use_container_width=True,
+        hide_index=True
+    )
 
 # ==================================================
 # VENDOR SERVICE PERFORMANCE
