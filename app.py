@@ -628,21 +628,31 @@ else:
 
         # --------------------------------------------------
         # REASON FOR EXCEPTION
+        #
+        # Only 3 reasons:
+        # 1. Start is delayed
+        # 2. Cab frequently delayed
+        # 3. Late trip
+        #
+        # Precedence:
+        # - A material current start delay (>10 min) is
+        #   treated as the immediate operational issue.
+        # - Otherwise, if the cab has been late on at least
+        #   50% of its previous comparable rides, the issue
+        #   is treated as a recurring cab/vendor problem.
+        # - Everything else is a late trip.
         # --------------------------------------------------
 
         def get_reason(row):
 
             if row["Positive Start Delay"] > 10:
-                return "Started late"
+                return "Start is delayed"
 
-            if row["Cab Route Late Rate"] >= 0.5:
-                return "Cab frequently late on this route"
-
-            if row["Site Late Rate"] >= 0.5:
-                return "Site / route has frequent delays"
-
-            if row["Time Bucket Late Rate"] >= 0.5:
-                return "High-delay time period"
+            if (
+                row["Positive End Delay"] > 0
+                and row["Cab Route Late Rate"] >= 0.5
+            ):
+                return "Cab frequently delayed"
 
             return "Late trip"
 
@@ -655,31 +665,24 @@ else:
         # OWNER
         # --------------------------------------------------
 
-        exceptions["Owner"] = "City Ops"
+        exceptions["Owner"] = np.where(
+            exceptions["Reason"].eq("Cab frequently delayed"),
+            "Vendor Manager",
+            "City Ops"
+        )
 
         # --------------------------------------------------
         # ACTION
         # --------------------------------------------------
 
-        def get_action(row):
-
-            if row["Positive Start Delay"] > 10:
-                return "Contact driver / dispatch"
-
-            if row["Cab Route Late Rate"] >= 0.5:
-                return "Investigate cab / vendor"
-
-            if row["Site Late Rate"] >= 0.5:
-                return "Review site-route issue"
-
-            if row["Time Bucket Late Rate"] >= 0.5:
-                return "Monitor upcoming trips"
-
-            return "Review trip"
-
-        exceptions["Action"] = exceptions.apply(
-            get_action,
-            axis=1
+        exceptions["Action"] = np.where(
+            exceptions["Reason"].eq("Cab frequently delayed"),
+            "Contact vendor",
+            np.where(
+                exceptions["Reason"].eq("Start is delayed"),
+                "Contact driver / dispatch",
+                "Review trip"
+            )
         )
 
         # --------------------------------------------------
@@ -709,10 +712,8 @@ else:
         with filter_col2:
             reason_options = [
                 "All",
-                "Started late",
-                "Cab frequently late on this route",
-                "Site / route has frequent delays",
-                "High-delay time period",
+                "Start is delayed",
+                "Cab frequently delayed",
                 "Late trip"
             ]
 
