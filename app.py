@@ -236,21 +236,21 @@ r1[1].metric(
 
 r1[2].metric(
     "No-delay rides",
-    f"{no_delay_n:,}",
-    f"{no_delay_n / trips:.1%}" if trips else None
+    f"{no_delay_n:,}"
 )
+r1[2].caption(f"{no_delay_n / trips:.1%} of rides" if trips else "—")
 
 r1[3].metric(
     "Rides with delay",
-    f"{any_delay_n:,}",
-    f"{any_delay_n / trips:.1%}" if trips else None
+    f"{any_delay_n:,}"
 )
+r1[3].caption(f"{any_delay_n / trips:.1%} of rides" if trips else "—")
 
 r1[4].metric(
     "Started late",
-    f"{start_late_n:,}",
-    f"{start_late_n / trips:.1%}" if trips else None
+    f"{start_late_n:,}"
 )
+r1[4].caption(f"{start_late_n / trips:.1%} of rides" if trips else "—")
 
 r1[5].metric(
     "Avg occupancy",
@@ -273,21 +273,21 @@ r2[0].metric(
 
 r2[1].metric(
     "Overall delay >10 min",
-    f"{int(f['Overall >10'].sum()):,}",
-    f"{f['Overall >10'].mean():.1%}" if trips else None
+    f"{int(f['Overall >10'].sum()):,}"
 )
+r2[1].caption(f"{f['Overall >10'].mean():.1%} of rides" if trips else "—")
 
 r2[2].metric(
     "Overall delay >20 min",
-    f"{int(f['Overall >20'].sum()):,}",
-    f"{f['Overall >20'].mean():.1%}" if trips else None
+    f"{int(f['Overall >20'].sum()):,}"
 )
+r2[2].caption(f"{f['Overall >20'].mean():.1%} of rides" if trips else "—")
 
 r2[3].metric(
     "Overall delay >30 min",
-    f"{int(f['Overall >30'].sum()):,}",
-    f"{f['Overall >30'].mean():.1%}" if trips else None
+    f"{int(f['Overall >30'].sum()):,}"
 )
+r2[3].caption(f"{f['Overall >30'].mean():.1%} of rides" if trips else "—")
 
 
 # --------------------------------------------------
@@ -305,21 +305,21 @@ r3[0].metric(
 
 r3[1].metric(
     "Start delay >10 min",
-    f"{int(f['Start >10'].sum()):,}",
-    f"{f['Start >10'].mean():.1%}" if trips else None
+    f"{int(f['Start >10'].sum()):,}"
 )
+r3[1].caption(f"{f['Start >10'].mean():.1%} of rides" if trips else "—")
 
 r3[2].metric(
     "Start delay >20 min",
-    f"{int(f['Start >20'].sum()):,}",
-    f"{f['Start >20'].mean():.1%}" if trips else None
+    f"{int(f['Start >20'].sum()):,}"
 )
+r3[2].caption(f"{f['Start >20'].mean():.1%} of rides" if trips else "—")
 
 r3[3].metric(
     "Start delay >30 min",
-    f"{int(f['Start >30'].sum()):,}",
-    f"{f['Start >30'].mean():.1%}" if trips else None
+    f"{int(f['Start >30'].sum()):,}"
 )
+r3[3].caption(f"{f['Start >30'].mean():.1%} of rides" if trips else "—")
 
 st.caption(
     f"Coverage: {selected_dates[0].strftime('%d %b %Y')} – "
@@ -455,16 +455,18 @@ st.divider()
 
 st.subheader("Exception Queue")
 
-# Work only on rides that have some delay
-exceptions = d[d["Any Delay"]].copy()
+# Build historical risk signals on ALL filtered rides first.
+# Then show only delayed rides in the exception queue.
+history_df = f.copy()
 
-if len(exceptions) == 0:
-    st.success("No delayed rides in the selected period.")
+if len(history_df) == 0:
+    st.info("No rides match the selected filters.")
 else:
 
     # --------------------------------------------------
     # TIME BUCKET
     # --------------------------------------------------
+
     def get_time_bucket(dt):
         if pd.isna(dt):
             return "Unknown"
@@ -480,114 +482,129 @@ else:
         else:
             return "Night"
 
-    exceptions["Time Bucket"] = (
-        exceptions["Planned Start"].apply(get_time_bucket)
+    history_df["Time Bucket"] = (
+        history_df["Planned Start"].apply(get_time_bucket)
     )
 
     # --------------------------------------------------
-    # HISTORICAL LATE PERFORMANCE
+    # SORT CHRONOLOGICALLY
     # --------------------------------------------------
 
-    # Sort chronologically so historical performance
-    # only considers rides before the current ride
-    exceptions = exceptions.sort_values("Start Time").copy()
+    history_df = history_df.sort_values("Start Time").copy()
 
-    # Previous 10 comparable rides for same Cab + Site + Direction
-    exceptions["Cab Route Late Rate"] = (
-        exceptions
+    # --------------------------------------------------
+    # CAB + SITE + DIRECTION HISTORY
+    # Previous 10 comparable rides
+    # --------------------------------------------------
+
+    history_df["Cab Route Late Rate"] = (
+        history_df
         .groupby(["Cab ID", "Site", "Direction"])["End Breach"]
         .transform(
-            lambda x: x.shift(1).rolling(10, min_periods=3).mean()
+            lambda x: x.shift(1).rolling(
+                10,
+                min_periods=3
+            ).mean()
         )
     )
 
-    # Site + Direction historical late rate
-    exceptions["Site Late Rate"] = (
-        exceptions
+    # --------------------------------------------------
+    # SITE + DIRECTION HISTORY
+    # Previous 10 comparable rides
+    # --------------------------------------------------
+
+    history_df["Site Late Rate"] = (
+        history_df
         .groupby(["Site", "Direction"])["End Breach"]
         .transform(
-            lambda x: x.shift(1).rolling(10, min_periods=3).mean()
+            lambda x: x.shift(1).rolling(
+                10,
+                min_periods=3
+            ).mean()
         )
     )
 
-    # Time-of-day historical late rate
-    exceptions["Time Bucket Late Rate"] = (
-        exceptions
+    # --------------------------------------------------
+    # TIME-OF-DAY HISTORY
+    # Previous 20 rides in same time bucket
+    # --------------------------------------------------
+
+    history_df["Time Bucket Late Rate"] = (
+        history_df
         .groupby("Time Bucket")["End Breach"]
         .transform(
-            lambda x: x.shift(1).rolling(20, min_periods=5).mean()
+            lambda x: x.shift(1).rolling(
+                20,
+                min_periods=5
+            ).mean()
         )
     )
 
-    # Fill missing history with 0
-    exceptions["Cab Route Late Rate"] = (
-        exceptions["Cab Route Late Rate"].fillna(0)
+    # No historical evidence = neutral score
+    history_df["Cab Route Late Rate"] = (
+        history_df["Cab Route Late Rate"].fillna(0)
     )
 
-    exceptions["Site Late Rate"] = (
-        exceptions["Site Late Rate"].fillna(0)
+    history_df["Site Late Rate"] = (
+        history_df["Site Late Rate"].fillna(0)
     )
 
-    exceptions["Time Bucket Late Rate"] = (
-        exceptions["Time Bucket Late Rate"].fillna(0)
+    history_df["Time Bucket Late Rate"] = (
+        history_df["Time Bucket Late Rate"].fillna(0)
     )
 
     # --------------------------------------------------
     # CURRENT START DELAY COMPONENT
+    # 0 min = 0 score; 30+ min = 100 score
     # --------------------------------------------------
 
-    # A cab that has already started late has a higher
-    # probability of finishing late.
-    exceptions["Start Delay Component"] = (
-        exceptions["Positive Start Delay"]
+    history_df["Start Delay Component"] = (
+        history_df["Positive Start Delay"]
         .clip(0, 30)
         / 30
         * 100
     )
 
     # --------------------------------------------------
-    # HISTORICAL CAB + ROUTE COMPONENT
+    # HISTORICAL COMPONENTS
     # --------------------------------------------------
 
-    exceptions["History Component"] = (
-        exceptions["Cab Route Late Rate"] * 100
+    history_df["History Component"] = (
+        history_df["Cab Route Late Rate"] * 100
     )
 
-    # --------------------------------------------------
-    # SITE / ROUTE COMPONENT
-    # --------------------------------------------------
-
-    exceptions["Route Component"] = (
-        exceptions["Site Late Rate"] * 100
+    history_df["Route Component"] = (
+        history_df["Site Late Rate"] * 100
     )
 
-    # --------------------------------------------------
-    # TIME-OF-DAY COMPONENT
-    # --------------------------------------------------
-
-    exceptions["Time Component"] = (
-        exceptions["Time Bucket Late Rate"] * 100
+    history_df["Time Component"] = (
+        history_df["Time Bucket Late Rate"] * 100
     )
 
     # --------------------------------------------------
     # FINAL LATE RISK SCORE
+    #
+    # 40% current start delay
+    # 30% cab + route history
+    # 20% site + direction history
+    # 10% time-of-day history
     # --------------------------------------------------
 
-    exceptions["Late Risk Score"] = (
-        0.40 * exceptions["Start Delay Component"]
-        + 0.30 * exceptions["History Component"]
-        + 0.20 * exceptions["Route Component"]
-        + 0.10 * exceptions["Time Component"]
+    history_df["Late Risk Score"] = (
+        0.40 * history_df["Start Delay Component"]
+        + 0.30 * history_df["History Component"]
+        + 0.20 * history_df["Route Component"]
+        + 0.10 * history_df["Time Component"]
     ).clip(0, 100).round(0)
 
     # --------------------------------------------------
     # RISK LEVEL
     # --------------------------------------------------
 
-    exceptions["Risk"] = np.select(
+    history_df["Risk"] = np.select(
         [
-            exceptions["Late Risk Score"] >= 70,
-            exceptions["Late Risk Score"] >= 40
+            history_df["Late Risk Score"] >= 70,
+            history_df["Late Risk Score"] >= 40
         ],
         [
             "High",
@@ -597,87 +614,104 @@ else:
     )
 
     # --------------------------------------------------
-    # REASON FOR EXCEPTION
+    # ONLY DELAYED RIDES ENTER THE EXCEPTION QUEUE
     # --------------------------------------------------
 
-    def get_reason(row):
-
-        if row["Positive Start Delay"] > 10:
-            return "Started late"
-
-        if row["Cab Route Late Rate"] >= 0.5:
-            return "Cab frequently late on this route"
-
-        if row["Site Late Rate"] >= 0.5:
-            return "Site / route has frequent delays"
-
-        if row["Time Bucket Late Rate"] >= 0.5:
-            return "High-delay time period"
-
-        return "Late trip"
-
-    exceptions["Reason"] = exceptions.apply(
-        get_reason,
-        axis=1
-    )
-
-    # --------------------------------------------------
-    # OWNER
-    # --------------------------------------------------
-
-    # For the current MVP, all lateness exceptions are
-    # owned by City Operations.
-    exceptions["Owner"] = "City Ops"
-
-    # --------------------------------------------------
-    # SORT BY RISK
-    # --------------------------------------------------
-
-    exceptions = exceptions.sort_values(
-        ["Late Risk Score", "Positive End Delay"],
-        ascending=[False, False]
-    )
-
-    # --------------------------------------------------
-    # DISPLAY TABLE
-    # --------------------------------------------------
-
-    exception_display = exceptions[
-        [
-            "Site",
-            "Cab ID",
-            "Vendor",
-            "Duty Num",
-            "Direction",
-            "Start Time",
-            "Planned Start",
-            "End Time",
-            "Planned End",
-            "Positive Start Delay",
-            "Positive End Delay",
-            "Late Risk Score",
-            "Risk",
-            "Reason",
-            "Owner"
-        ]
+    exceptions = history_df[
+        history_df["Any Delay"]
     ].copy()
 
-    # Rename columns for dashboard
-    exception_display = exception_display.rename(
-        columns={
-            "Cab ID": "Cab",
-            "Duty Num": "Duty",
-            "Positive Start Delay": "Start Delay (min)",
-            "Positive End Delay": "End Delay (min)",
-            "Late Risk Score": "Risk Score"
-        }
-    )
+    if len(exceptions) == 0:
+        st.success("No delayed rides in the selected period.")
 
-    st.dataframe(
-        exception_display,
-        use_container_width=True,
-        hide_index=True
-    )
+    else:
+
+        # --------------------------------------------------
+        # REASON FOR EXCEPTION
+        # --------------------------------------------------
+
+        def get_reason(row):
+
+            if row["Positive Start Delay"] > 10:
+                return "Started late"
+
+            if row["Cab Route Late Rate"] >= 0.5:
+                return "Cab frequently late on this route"
+
+            if row["Site Late Rate"] >= 0.5:
+                return "Site / route has frequent delays"
+
+            if row["Time Bucket Late Rate"] >= 0.5:
+                return "High-delay time period"
+
+            return "Late trip"
+
+        exceptions["Reason"] = exceptions.apply(
+            get_reason,
+            axis=1
+        )
+
+        # --------------------------------------------------
+        # OWNER
+        # --------------------------------------------------
+
+        exceptions["Owner"] = "City Ops"
+
+        # --------------------------------------------------
+        # SORT BY RISK
+        # --------------------------------------------------
+
+        exceptions = exceptions.sort_values(
+            ["Late Risk Score", "Positive End Delay"],
+            ascending=[False, False]
+        )
+
+        # --------------------------------------------------
+        # DISPLAY TABLE
+        # --------------------------------------------------
+
+        exception_display = exceptions[
+            [
+                "Site",
+                "Cab ID",
+                "Vendor",
+                "Duty Num",
+                "Direction",
+                "Start Time",
+                "Planned Start",
+                "End Time",
+                "Planned End",
+                "Positive Start Delay",
+                "Positive End Delay",
+                "Late Risk Score",
+                "Risk",
+                "Reason",
+                "Owner"
+            ]
+        ].copy()
+
+        exception_display = exception_display.rename(
+            columns={
+                "Cab ID": "Cab",
+                "Duty Num": "Duty",
+                "Positive Start Delay": "Start Delay (min)",
+                "Positive End Delay": "End Delay (min)",
+                "Late Risk Score": "Risk Score"
+            }
+        )
+
+        st.dataframe(
+            exception_display,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.caption(
+            "Late Risk Score is an MVP heuristic, not a validated probability. "
+            "Historical signals use only rides occurring before the current ride."
+        )
+
+st.divider()
 
 # ==================================================
 # VENDOR SERVICE PERFORMANCE
