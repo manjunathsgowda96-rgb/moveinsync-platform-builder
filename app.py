@@ -217,92 +217,108 @@ occupancy = (
     if trips else 0
 )
 
-# First row
-c1, c2, c3, c4, c5, c6 = st.columns(6)
 
-c1.metric(
+# --------------------------------------------------
+# ROW 1 — Overall Operations
+# --------------------------------------------------
+
+r1 = st.columns(6)
+
+r1[0].metric(
     "Managed sites",
     f"{managed_sites}/{total_city_sites}"
 )
 
-c2.metric(
+r1[1].metric(
     "Trips",
     f"{trips:,}"
 )
 
-c3.metric(
+r1[2].metric(
     "No-delay rides",
     f"{no_delay_n:,}",
-    f"{no_delay_n / trips:.1%}" if trips else "0.0%"
+    f"{no_delay_n / trips:.1%}" if trips else None
 )
 
-c4.metric(
+r1[3].metric(
     "Rides with delay",
     f"{any_delay_n:,}",
-    f"{any_delay_n / trips:.1%}" if trips else "0.0%"
+    f"{any_delay_n / trips:.1%}" if trips else None
 )
 
-c5.metric(
+r1[4].metric(
     "Started late",
     f"{start_late_n:,}",
-    f"{start_late_n / trips:.1%}" if trips else "0.0%"
+    f"{start_late_n / trips:.1%}" if trips else None
 )
 
-c6.metric(
+r1[5].metric(
     "Avg occupancy",
     f"{occupancy:.1%}" if pd.notna(occupancy) else "—"
 )
 
-# Second row: delay metrics
-b1, b2, b3, b4, b5 = st.columns(5)
 
-b1.metric(
-    "Avg start delay",
-    f"{avg_start_delay:.1f} min"
-)
+# --------------------------------------------------
+# ROW 2 — Overall Delay
+# --------------------------------------------------
 
-b2.metric(
+st.markdown("##### Overall delay")
+
+r2 = st.columns(4)
+
+r2[0].metric(
     "Avg total delay",
     f"{avg_total_delay:.1f} min"
 )
 
-b3.metric(
+r2[1].metric(
     "Overall delay >10 min",
     f"{int(f['Overall >10'].sum()):,}",
-    f"{f['Overall >10'].mean():.1%}" if trips else "0.0%"
+    f"{f['Overall >10'].mean():.1%}" if trips else None
 )
 
-b4.metric(
+r2[2].metric(
     "Overall delay >20 min",
     f"{int(f['Overall >20'].sum()):,}",
-    f"{f['Overall >20'].mean():.1%}" if trips else "0.0%"
+    f"{f['Overall >20'].mean():.1%}" if trips else None
 )
 
-b5.metric(
+r2[3].metric(
     "Overall delay >30 min",
     f"{int(f['Overall >30'].sum()):,}",
-    f"{f['Overall >30'].mean():.1%}" if trips else "0.0%"
+    f"{f['Overall >30'].mean():.1%}" if trips else None
 )
 
-# Third row: start-delay severity
-s1, s2, s3 = st.columns(3)
 
-s1.metric(
-    "Started >10 min late",
+# --------------------------------------------------
+# ROW 3 — Start Delay
+# --------------------------------------------------
+
+st.markdown("##### Start delay")
+
+r3 = st.columns(4)
+
+r3[0].metric(
+    "Avg start delay",
+    f"{avg_start_delay:.1f} min"
+)
+
+r3[1].metric(
+    "Start delay >10 min",
     f"{int(f['Start >10'].sum()):,}",
-    f"{f['Start >10'].mean():.1%}" if trips else "0.0%"
+    f"{f['Start >10'].mean():.1%}" if trips else None
 )
 
-s2.metric(
-    "Started >20 min late",
+r3[2].metric(
+    "Start delay >20 min",
     f"{int(f['Start >20'].sum()):,}",
-    f"{f['Start >20'].mean():.1%}" if trips else "0.0%"
+    f"{f['Start >20'].mean():.1%}" if trips else None
 )
 
-s3.metric(
-    "Started >30 min late",
+r3[3].metric(
+    "Start delay >30 min",
     f"{int(f['Start >30'].sum()):,}",
-    f"{f['Start >30'].mean():.1%}" if trips else "0.0%"
+    f"{f['Start >30'].mean():.1%}" if trips else None
 )
 
 st.caption(
@@ -312,7 +328,6 @@ st.caption(
 )
 
 st.divider()
-
 
 # ==================================================
 # SITE HEALTH
