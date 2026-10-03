@@ -68,8 +68,8 @@ def load_data(file):
     d["Positive End Delay"] = d["End Delay Min"].clip(lower=0)
 
     # SLA / delay flags
-    d["Start Breach"] = d["Start Delay Min"] > 10
-    d["End Breach"] = d["End Delay Min"] > 10
+    d["Start Breach"] = d["Start Delay Min"] > 0
+    d["End Breach"] = d["End Delay Min"] > 0
 
     d["Any Delay"] = (
         (d["Start Delay Min"] > 0)
@@ -137,8 +137,8 @@ df = load_data(uploaded)
 scope = df[df["Site Type"].eq("O")].copy()
 
 # MVP thresholds
-START_THRESHOLD = 10
-END_THRESHOLD = 10
+START_THRESHOLD = 0
+END_THRESHOLD = 0
 WATCH_THRESHOLD = 20
 ATTENTION_THRESHOLD = 30
 
@@ -635,7 +635,7 @@ else:
         # 3. Late trip
         #
         # Precedence:
-        # - A material current start delay (>10 min) is
+        # - Any current positive start delay is
         #   treated as the immediate operational issue.
         # - Otherwise, if the cab has been late on at least
         #   50% of its previous comparable rides, the issue
@@ -645,7 +645,7 @@ else:
 
         def get_reason(row):
 
-            if row["Positive Start Delay"] > 10:
+            if row["Positive Start Delay"] > 0:
                 return "Start is delayed"
 
             if (
@@ -918,10 +918,10 @@ st.dataframe(
 
 st.caption(
     "Assumptions: managed fleet = Site Type O. "
-    "Occupancy = Employee Count / Cab Capacity, averaged at trip level. "
+    "Occupancy = Employee Count / Cab Capacity, averaged at trip level; target = 100%. "
     "Total delay = positive delay at planned trip end. "
-    "No-delay ride = both actual start and actual end are on/before plan. "
-    "Status thresholds are MVP assumptions, not contractual SLAs."
+    "No-delay ride = actual start and actual end are both on or before plan. "
+    "Trip SLA standard = 0 minutes; site/vendor status thresholds are operational health bands."
 )
 
 st.divider()
@@ -935,18 +935,27 @@ with st.expander("MVP scope & data gaps"):
         """
         **MVP scope:** Managed fleet only (`Site Type = O`).
 
+        **Operating standards:** Start delay = 0 min and end delay = 0 min;
+        cab occupancy target = 100%; recurring cab delays are owned by the
+        Vendor Manager.
+
         **The supplied dataset is historical and is used to demonstrate the
         operating logic.** In production, the control tower would consume a
         live trip/vehicle feed for real-time exception detection, plus separate
         compliance and vehicle-availability data sources.
 
+        **Compliance / availability target state:** compliance documents should
+        be submitted at least 30 days before expiry, and there should be 0
+        unplanned offline events during an active duty. These data are available
+        outside the supplied input source.
+
         **Operator economics:** earning/revenue/contract fields currently have
         a known data-quality defect, so no economics decision layer is built
-        until the underlying measurement is reliable.
+        until the underlying measurement is reliable. Once reliable, cab margin
+        would be benchmarked against the 90th-percentile (top 10%) cab margin.
 
         **Late Risk Score:** Historical heuristic using current start delay,
         prior cab-route performance, prior site-direction performance and
         time-of-day performance. It is not a validated probability model.
         """
     )
-
