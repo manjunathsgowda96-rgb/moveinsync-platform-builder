@@ -450,10 +450,16 @@ st.divider()
 
 
 # ==================================================
-# EXCEPTION QUEUE + LATE RISK
+# ISSUE RESOLUTION & OWNERSHIP
 # ==================================================
 
-st.subheader("Exception Queue")
+st.subheader("Issue Resolution & Ownership")
+st.caption("Every operational issue is assigned to the right owner with a clear next action.")
+
+st.markdown(
+    "**Purpose:** Identify operational issues early, assign clear ownership, "
+    "and give the responsible team a specific action to resolve them."
+)
 
 # Build historical risk signals on ALL filtered rides first.
 # Then show only delayed rides in the exception queue.
@@ -718,7 +724,7 @@ else:
             ]
 
             reason_filter = st.selectbox(
-                "Reason",
+                "Issue",
                 reason_options,
                 key="exception_reason_filter"
             )
@@ -771,7 +777,7 @@ else:
                 "Positive End Delay",
                 "Late Risk Score",
                 "Risk",
-                "Reason",
+                "Issue",
                 "Owner",
                 "Action"
             ]
@@ -783,7 +789,8 @@ else:
                 "Duty Num": "Duty",
                 "Positive Start Delay": "Start Delay (min)",
                 "Positive End Delay": "End Delay (min)",
-                "Late Risk Score": "Risk Score"
+                "Late Risk Score": "Risk Score",
+                "Reason": "Issue"
             }
         )
 
